@@ -8,18 +8,18 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Suppress noisy external lookups in isolated environments
+# Suppress external model cost map fetching in isolated/offline environments
 litellm.suppress_debug_info = True
 litellm.turn_off_message_logging = True
 
-# Initialize LiteLLM Cache (LiteLLM uses Cache(type="local") for in-process memory caching)
+# Initialize LiteLLM Cache
 litellm_cache_instance: Optional[Cache] = None
 
 if settings.LITELLM_CACHE_ENABLED:
     try:
         litellm_cache_instance = Cache(type="local")
         litellm.cache = litellm_cache_instance
-        logger.info("LiteLLM local cache initialized successfully")
+        logger.info("LiteLLM Cache (local) initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize LiteLLM cache: {e}")
         litellm.cache = None
@@ -29,12 +29,20 @@ else:
 
 def generate_cache_key(model: str, messages: List[Dict[str, str]]) -> str:
     """
-    Deterministic cache key that strictly distinguishes:
+    Generates a deterministic cache key using LiteLLM's native cache key generator
+    which strictly distinguishes:
     - Model
     - System prompt (if included in messages)
-    - Full message history
-    - New user message
+    - Full prior message history
+    - Current new user message
     """
+    if litellm.cache and hasattr(litellm.cache, "get_cache_key"):
+        try:
+            return litellm.cache.get_cache_key(model=model, messages=messages)
+        except Exception:
+            pass
+
+    # Deterministic fallback hashing canonical payload
     canonical_payload = {
         "model": model,
         "messages": [
@@ -50,19 +58,14 @@ def get_cached_response(cache_key: str) -> Optional[Dict[str, Any]]:
     if not settings.LITELLM_CACHE_ENABLED or not litellm.cache:
         return None
     try:
-        cache_obj = getattr(litellm.cache, "cache", litellm.cache)
-        cached_val = None
-        if hasattr(cache_obj, "get_cache"):
-            cached_val = cache_obj.get_cache(cache_key)
-        elif hasattr(cache_obj, "get"):
-            cached_val = cache_obj.get(cache_key)
-
-        if cached_val is not None:
-            if isinstance(cached_val, str):
-                return json.loads(cached_val)
-            return cached_val
+        # Native LiteLLM Cache method
+        val = litellm.cache.get_cache(cache_key=cache_key)
+        if val is not None:
+            if isinstance(val, str):
+                return json.loads(val)
+            return val
     except Exception as e:
-        logger.warning(f"Error accessing cache: {e}")
+        logger.warning(f"Error accessing LiteLLM cache: {e}")
     return None
 
 
@@ -71,11 +74,7 @@ def set_cached_response(cache_key: str, data: Dict[str, Any]) -> None:
     if not settings.LITELLM_CACHE_ENABLED or not litellm.cache:
         return
     try:
-        cache_obj = getattr(litellm.cache, "cache", litellm.cache)
-        val_str = json.dumps(data)
-        if hasattr(cache_obj, "set_cache"):
-            cache_obj.set_cache(cache_key, val_str)
-        elif hasattr(cache_obj, "set"):
-            cache_obj.set(cache_key, val_str)
+        # Native LiteLLM Cache method
+        litellm.cache.add_cache(result=data, cache_key=cache_key)
     except Exception as e:
-        logger.warning(f"Error setting cache: {e}")
+        logger.warning(f"Error setting LiteLLM cache: {e}")
