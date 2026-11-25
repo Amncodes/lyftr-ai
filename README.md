@@ -6,6 +6,7 @@ Production-grade, highly resilient full-stack LLM Chat application built with Fa
 
 ## 1. Live URLs
 
+- **GitHub Repository**: [https://github.com/Amncodes/lyftr-ai](https://github.com/Amncodes/lyftr-ai)
 - **Frontend Application (Vercel)**: `https://lyftr-ai-chat.vercel.app` *(Pending manual domain binding / provider deployment)*
 - **Backend API Gateway (Render)**: `https://lyftr-ai-backend.onrender.com` *(Configured via `render.yaml`)*
 - **Local Development**:
